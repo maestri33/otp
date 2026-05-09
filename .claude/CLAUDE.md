@@ -10,7 +10,7 @@
 
 - Você é o Claude Code **exclusivo deste serviço**. Você não conhece outros
   serviços do ecossistema; quando precisar falar com outro serviço, faz isso
-  via HTTP, fila ou webhook (ver `app/integrations/`).
+  via HTTP (ver `app/integrations/`).
 - Seu papel: **manter este serviço pequeno, claro e funcional.** Nada de
   abstração prematura, nada de framework dentro de framework.
 - Sua missão recorrente: implementar features, corrigir bugs, escrever testes
@@ -33,6 +33,8 @@
 5. **Porta 80.** Esse serviço expõe **somente** a porta 80 (HTTP). Não mude.
 6. **Cada serviço, seu banco.** Não conecte este serviço no banco de outro
    serviço. Se precisa de dado de outro serviço, chama a API dele.
+7. **Configuração no .env.** Toda config do OTP vai no `.env`, não no banco.
+   Pra alterar, edita `.env` e restart o serviço.
 
 ## 3. Stack
 
@@ -47,8 +49,6 @@
 | Validação         | Pydantic v2                             |
 | Config            | pydantic-settings + `.env`              |
 | HTTP cliente      | httpx (async)                           |
-| Cache / pub-sub   | redis.asyncio                           |
-| Mensageria        | aio-pika (RabbitMQ)                     |
 | Testes            | pytest + pytest-asyncio + httpx client  |
 | Logs              | structlog (JSON em prod)                |
 
@@ -68,25 +68,26 @@
 │   ├── main.py               # entrypoint FastAPI, lifespan, porta 80
 │   ├── config.py             # Settings (lê .env)
 │   ├── db.py                 # init/close Tortoise
-│   ├── api/                  # routers HTTP — UMA pasta por feature
+│   ├── api/                  # routers HTTP — UM arquivo por feature
 │   │   ├── deps.py           # Depends() reutilizáveis
 │   │   ├── router.py         # agrega todos os routers
 │   │   ├── health.py         # /health, /ready
-│   │   └── example.py        # CRUD de exemplo
+│   │   ├── otp.py            # /api/v1/otp, /check, /logs
+│   │   └── status.py         # /status (JSON com dados reais)
 │   ├── models/               # modelos Tortoise (1 arquivo por entidade)
 │   ├── schemas/              # Pydantic schemas (request/response)
 │   ├── services/             # regras de negócio (chamadas pelo router)
-│   ├── integrations/         # tudo que sai pra fora deste serviço
-│   │   ├── http_client.py    # cliente httpx p/ outros microservices
-│   │   ├── redis_client.py   # cache + pub/sub
-│   │   ├── messaging.py      # publisher/consumer RabbitMQ
-│   │   └── webhooks.py       # outbound + inbound webhooks
-│   ├── workers/              # consumidores de fila, jobs em background
+│   │   ├── otp.py            # geração, validação, listagem
+│   │   ├── otp.md            # template da mensagem
+│   │   └── notify.py         # envio de mensagens via notify
+│   ├── integrations/         # chamadas HTTP pra outros serviços
+│   │   ├── http_client.py    # httpx client + retry
+│   │   └── notify_client.py  # wrapper HTTP do notify
 │   └── utils/                # logging, helpers genéricos
 ├── tests/                    # pytest
 ├── scripts/
 │   ├── dev.sh                # roda uvicorn em dev
-│   └── new_service.sh        # clona este template p/ um novo serviço
+│   └── otp.service           # systemd unit file
 ├── pyproject.toml
 ├── .env.example
 ├── Makefile
@@ -100,7 +101,6 @@
 - Schema Pydantic → `app/schemas/<feature>.py`
 - Lógica de negócio (mais de 5 linhas) → `app/services/<feature>_service.py`
 - Chamada pra outro serviço → `app/integrations/<servico>_client.py`
-- Consumir mensagem de fila → `app/workers/<topico>_consumer.py`
 
 Se uma coisa nova não cabe em nenhuma dessas pastas, **pergunte** antes
 de criar pasta nova.
@@ -114,8 +114,7 @@ de criar pasta nova.
   pode pular auth, CORS aberto, sem rate-limit. O usuário vai pedir essas
   camadas depois, num passe explícito de "agora trava isso".
 - **Modelo do Claude Code:** DeepSeek v4 Pro (configurado em `settings.json`
-  via `ANTHROPIC_BASE_URL` apontando pra um proxy compatível, ex.:
-  claude-code-router ou litellm).
+  via `ANTHROPIC_BASE_URL` apontando pra um proxy compatível).
 
 ## 6. Comandos que você usa direto
 
@@ -137,15 +136,9 @@ uv run aerich upgrade     # aplica
 
 ## 7. Gerenciamento de memória
 
-- **`.claude/memory/architecture.md`** — sempre que tomar uma decisão
-  arquitetural (escolheu RabbitMQ vs NATS, quebrou um modelo em dois,
-  mudou estratégia de cache), registre aqui em uma seção datada.
-- **`.claude/memory/conventions.md`** — convenções deste serviço
-  específico (nomes, padrões de erro, formato de log). Atualize quando
-  for combinado algo novo.
-- **`.claude/memory/integrations.md`** — para cada serviço externo com
-  que este serviço fala: URL base, endpoints usados, formato esperado,
-  retry policy. Atualize **toda vez** que adicionar uma chamada nova.
+- **`.claude/memory/architecture.md`** — decisões arquiteturais com data e contexto.
+- **`.claude/memory/conventions.md`** — convenções específicas (nomes, padrões de erro, logs).
+- **`.claude/memory/integrations.md`** — cada serviço externo: URL base, endpoints, formato, retry.
 - Antes de implementar algo, leia os 3 arquivos. Antes de terminar a
   tarefa, pergunte-se: "preciso registrar algo aqui?".
 
@@ -163,11 +156,11 @@ quando uma pergunta direta resolve.
 
 - Não criar segundo banco neste serviço.
 - Não conectar diretamente no banco de outro serviço.
-- Não adicionar dependência sem registrar em `pyproject.toml` via
-  `uv add`.
+- Não adicionar dependência sem registrar em `pyproject.toml` via `uv add`.
 - Não escrever migration manual — usa `aerich migrate`.
 - Não logar segredo (token, senha, payload sensível).
 - Não escrever README/comentário em inglês — este projeto é em **PT-BR**.
+- Não colocar config no banco — config é no `.env`.
 
 ---
 

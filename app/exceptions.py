@@ -33,7 +33,7 @@ class ValidationError(DomainError):
 
 
 class IntegrationError(DomainError):
-    """Failure calling an external service (HTTP, queue, webhook)."""
+    """Failure calling an external service via HTTP."""
 
     status_code = 502
     code = "integration_error"

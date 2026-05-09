@@ -45,8 +45,9 @@ Microsserviço **OTP** — geração e validação de códigos de autenticação
 
 - Gera código OTP numérico e envia via serviço externo **notify**.
 - Valida código OTP contra hash SHA256 com TTL configurável.
-- Configuração dinâmica (TTL, dígitos, rodapé, ativar/desativar).
-- Logs completos de todas as operações.
+- Configuração via variáveis de ambiente (`.env`).
+- Logs estruturados em JSON de todas as operações.
+- `GET /status` — dados reais do serviço (uptime, conexões, stats).
 
 ## Integração
 

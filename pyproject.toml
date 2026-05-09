@@ -1,7 +1,7 @@
 [project]
 name = "otp"
 version = "0.1.0"
-description = "Template generico de microserviço FastAPI + Tortoise ORM (clone-and-rename)"
+description = "Microsserviço OTP — geração e validação de códigos descartáveis"
 requires-python = ">=3.12"
 readme = "README.md"
 
