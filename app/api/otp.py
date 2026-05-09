@@ -5,8 +5,6 @@ OTP endpoints — /api/v1/otp
 - GET  /              — list all OTP logs
 - POST /check         — validate OTP (external_id + code)
 - GET  /logs          — logs with filters (external_id, status)
-- GET  /config        — read current configuration
-- PATCH /config       — update configuration
 """
 
 from fastapi import APIRouter, Depends, Query, status
@@ -16,10 +14,8 @@ from app.schemas.otp import (
     OTPCheck,
     OTPCheckResponse,
     OTPCreate,
-    OTPLogFilter,
     OTPRead,
 )
-from app.schemas.otp_config import OTPConfigRead, OTPConfigUpdate
 from app.services import otp as otp_service
 
 router = APIRouter(prefix="/api/v1/otp", tags=["otp"])
@@ -154,50 +150,3 @@ async def list_otp_logs(
         offset=offset,
     )
     return [OTPRead.model_validate(log, from_attributes=True) for log in logs]
-
-
-# ---------------------------------------------------------------------------
-# Config endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.get(
-    "/config",
-    response_model=OTPConfigRead,
-    summary="Consultar configuração OTP",
-    description="""
-Retorna a configuração atual do serviço OTP.
-
-Campos retornados:
-- `footer` — texto de rodapé da mensagem.
-- `ttl_s` — tempo de vida do código em segundos.
-- `num_digits` — quantidade de dígitos do código.
-- `max_attempts` — tentativas máximas antes de invalidar (não implementado ainda).
-- `active` — se o serviço está habilitado.
-""",
-)
-async def get_config() -> OTPConfigRead:
-    """Return the current OTP configuration (footer, TTL, digits, etc.)."""
-    cfg = await otp_service.get_config()
-    return OTPConfigRead.model_validate(cfg, from_attributes=True)
-
-
-@router.patch(
-    "/config",
-    response_model=OTPConfigRead,
-    summary="Atualizar configuração OTP",
-    description="""
-Atualiza a configuração do serviço OTP — apenas os campos informados são alterados.
-
-Campos aceitos (todos opcionais):
-- `footer` (string, max 255) — texto de rodapé.
-- `ttl_s` (int, 30–3600) — TTL do código em segundos.
-- `num_digits` (int, 4–10) — número de dígitos do código.
-- `max_attempts` (int, 1–10) — tentativas máximas.
-- `active` (bool) — ativar/desativar serviço.
-""",
-)
-async def update_config(payload: OTPConfigUpdate) -> OTPConfigRead:
-    """Update OTP configuration — only the provided fields."""
-    cfg = await otp_service.update_config(**payload.model_dump(exclude_unset=True))
-    return OTPConfigRead.model_validate(cfg, from_attributes=True)

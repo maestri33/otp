@@ -2,62 +2,32 @@
 OTP service — generates authentication codes, sends via notify, and validates.
 
 Flow:
-  1. POST /otp → get_config() → generate_code() → save OTPLog(status=generated) →
+  1. POST /otp → generate_code() → save OTPLog(status=generated) →
      render otp.md template → notify.send_message() → update status=sent.
   2. POST /otp/check → find latest unexpired OTP → validate →
      update status=verified (or expired/failed).
   3. GET /otp, GET /otp/logs → query OTPLog with filters.
-  4. GET/PATCH /otp/config → read/update global configuration.
+
+Configuration is read from env vars (Settings), not the database.
 """
 
 import hashlib
 import secrets
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 
+from app.config import get_settings
 from app.models.otp import OTPLog
-from app.models.otp_config import OTPConfig
 from app.services import notify
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
+settings = get_settings()
 
 _TEMPLATE_PATH = Path(__file__).parent / "otp.md"
-
-# Defaults used until config is created in the database
-_DEFAULT_FOOTER = "Equipe OTP"
-_DEFAULT_TTL_S = 300
-_DEFAULT_NUM_DIGITS = 6
-
-
-# ---------------------------------------------------------------------------
-# Config — GET / PATCH
-# ---------------------------------------------------------------------------
-
-
-async def get_config() -> OTPConfig:
-    """Return the current configuration. Creates with defaults if missing."""
-    cfg = await OTPConfig.first()
-    if cfg is None:
-        cfg = await OTPConfig.create()
-        log.info("otp.config.created_default", id=cfg.id)
-    return cfg
-
-
-async def update_config(**kwargs: int | str | bool | None) -> OTPConfig:
-    """Update only the provided config fields."""
-    cfg = await get_config()
-    dirty = False
-    for field, value in kwargs.items():
-        if value is not None and hasattr(cfg, field):
-            setattr(cfg, field, value)
-            dirty = True
-    if dirty:
-        await cfg.save()
-        log.info("otp.config.updated", **kwargs)
-    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +35,10 @@ async def update_config(**kwargs: int | str | bool | None) -> OTPConfig:
 # ---------------------------------------------------------------------------
 
 
-def generate_code(length: int = _DEFAULT_NUM_DIGITS) -> str:
+def generate_code(length: int | None = None) -> str:
     """Generate a secure numeric code of `length` digits."""
-    return "".join(str(secrets.randbelow(10)) for _ in range(length))
+    n = length or settings.otp_num_digits
+    return "".join(str(secrets.randbelow(10)) for _ in range(n))
 
 
 def _hash_code(code: str) -> str:
@@ -105,10 +76,8 @@ async def generate_and_send(
 
     Returns the created OTPLog.
     """
-    cfg = await get_config()
-
-    if not cfg.active:
-        log.warning("otp.blocked_by_config", external_id=external_id)
+    if not settings.otp_active:
+        log.warning("otp.generate.blocked", external_id=external_id)
         return await OTPLog.create(
             external_id=external_id,
             code_hash="",
@@ -116,7 +85,8 @@ async def generate_and_send(
             error_detail="Serviço OTP desativado na configuração",
         )
 
-    code = generate_code(length=cfg.num_digits)
+    log.info("otp.generate.requested", external_id=external_id)
+    code = generate_code()
 
     # 1. Persist as "generated"
     otp_log = await OTPLog.create(
@@ -127,7 +97,7 @@ async def generate_and_send(
     log.info("otp.generated", id=otp_log.id, external_id=external_id)
 
     # 2. Render template and send via notify
-    content = _render_template(code, footer=cfg.footer)
+    content = _render_template(code, footer=settings.otp_footer)
 
     try:
         result = await notify.send_message(
@@ -159,10 +129,11 @@ async def verify_code(
 
     Returns {"valid": true/false, "detail": "..."}
     """
-    cfg = await get_config()
-
-    if not cfg.active:
+    if not settings.otp_active:
+        log.warning("otp.verify.blocked", external_id=external_id)
         return {"valid": False, "detail": "Serviço OTP desativado"}
+
+    log.info("otp.verify.requested", external_id=external_id)
 
     # Find the most recent OTP for this external_id that hasn't been used
     otp_log = (
@@ -176,8 +147,8 @@ async def verify_code(
         return {"valid": False, "detail": "Nenhum OTP pendente encontrado"}
 
     # Check time-based expiration
-    age_s = (time.time() - otp_log.created_at.timestamp())
-    if age_s > cfg.ttl_s:
+    age_s = time.time() - otp_log.created_at.timestamp()
+    if age_s > settings.otp_ttl_s:
         otp_log.status = "expired"
         await otp_log.save()
         log.info("otp.check.expired", id=otp_log.id, age_s=age_s)
@@ -189,8 +160,6 @@ async def verify_code(
         return {"valid": False, "detail": "Código inválido"}
 
     # Success — mark as verified
-    from datetime import datetime, timezone
-
     otp_log.status = "verified"
     otp_log.verified_at = datetime.now(timezone.utc)
     await otp_log.save()

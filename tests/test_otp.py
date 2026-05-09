@@ -1,54 +1,13 @@
 """Testes dos endpoints OTP — sem mocks, com banco real (SQLite in-memory)."""
 
 import hashlib
+import os
 import time
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.otp import OTPLog
-from app.models.otp_config import OTPConfig
-
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-
-async def test_get_config_default(client: AsyncClient) -> None:
-    """GET /api/v1/otp/config retorna a config default quando nada existe."""
-    resp = await client.get("/api/v1/otp/config")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["footer"] == "Equipe OTP"
-    assert body["ttl_s"] == 300
-    assert body["num_digits"] == 6
-    assert body["max_attempts"] == 3
-    assert body["active"] is True
-
-
-async def test_update_config(client: AsyncClient) -> None:
-    """PATCH /api/v1/otp/config atualiza só os campos informados."""
-    resp = await client.patch(
-        "/api/v1/otp/config",
-        json={"footer": "Test Footer", "ttl_s": 120},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["footer"] == "Test Footer"
-    assert body["ttl_s"] == 120
-    # Campos não informados mantêm valores anteriores
-    assert body["num_digits"] == 6
-    assert body["active"] is True
-
-
-async def test_update_config_validation(client: AsyncClient) -> None:
-    """PATCH /api/v1/otp/config rejeita valores fora dos limites."""
-    resp = await client.patch(
-        "/api/v1/otp/config",
-        json={"ttl_s": 10},  # mínimo é 30
-    )
-    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +149,6 @@ async def test_verify_code_no_pending_otp(client: AsyncClient) -> None:
 
 async def test_verify_code_expired(client: AsyncClient) -> None:
     """POST /api/v1/otp/check retorna expired quando TTL excedido."""
-    # Cria OTP com created_at no passado (TTL default = 300s)
     from datetime import datetime, timedelta, timezone
 
     old = datetime.now(timezone.utc) - timedelta(seconds=600)
@@ -213,49 +171,9 @@ async def test_verify_code_expired(client: AsyncClient) -> None:
     assert body["detail"] == "OTP expirado"
 
 
-async def test_verify_code_service_disabled(client: AsyncClient) -> None:
-    """POST /api/v1/otp/check bloqueia quando active=false."""
-    # Garante que a config existe
-    cfg = await OTPConfig.first() or await OTPConfig.create()
-    cfg.active = False
-    await cfg.save()
-
-    resp = await client.post(
-        "/api/v1/otp/check",
-        json={"external_id": "anyone", "code": "123456"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["valid"] is False
-    assert resp.json()["detail"] == "Serviço OTP desativado"
-
-    # Restaura
-    cfg.active = True
-    await cfg.save()
-
-
 # ---------------------------------------------------------------------------
 # Geração (depende do notify estar rodando — teste de integração real)
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-async def test_generate_otp_service_disabled(client: AsyncClient) -> None:
-    """POST /api/v1/otp bloqueia geração quando active=false (não depende de notify)."""
-    cfg = await OTPConfig.first() or await OTPConfig.create()
-    cfg.active = False
-    await cfg.save()
-
-    resp = await client.post(
-        "/api/v1/otp",
-        json={"external_id": "disabled-test"},
-    )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["status"] == "failed"
-    assert "desativado" in body["error_detail"]
-
-    cfg.active = True
-    await cfg.save()
 
 
 @pytest.mark.integration

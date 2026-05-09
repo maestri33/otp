@@ -1,103 +1,41 @@
 # otp
 
-Template **bootstrap** de microserviço para o ecossistema interno (Proxmox / DMZ).
-Stack: **FastAPI + Tortoise ORM + Uvicorn + uv**, com **Claude Code já configurado**
-por dentro (memória, regras, Context7, DeepSeek v4 Pro).
+Microsserviço de geração e validação de OTP (one-time password).
 
-> **Filosofia.** Cada microserviço deve ser **genérico, reutilizável, simples e
-> completo**. Cada serviço tem o **seu próprio Claude Code** (com memória própria),
-> o **seu próprio banco**, e fala com os outros serviços via HTTP, fila ou webhook —
-> nunca via banco compartilhado.
+Stack: **FastAPI + Tortoise ORM + Uvicorn + uv**.
 
----
+## Endpoints
 
-## Como usar este template
+| Método | Rota              | Descrição                        |
+| ------ | ----------------- | -------------------------------- |
+| POST   | `/api/v1/otp`     | Gerar e enviar OTP via notify    |
+| GET    | `/api/v1/otp`     | Listar OTPs (filtros opcionais)  |
+| POST   | `/api/v1/otp/check` | Validar código OTP             |
+| GET    | `/api/v1/otp/logs` | Listar logs (idêntico ao GET /) |
+| GET    | `/health`         | Liveness                         |
+| GET    | `/ready`          | Readiness (verifica banco)       |
 
-### 1. Clonar pra um serviço novo
+## Fluxo
 
-```bash
-# copia o template e renomeia
-./scripts/new_service.sh auth-svc
+1. **Geração:** `POST /api/v1/otp` com `external_id` → gera código numérico → salva hash SHA256 no banco → renderiza template `otp.md` → envia via **notify** → retorna status `sent`.
+2. **Validação:** `POST /api/v1/otp/check` com `external_id` + `code` → busca OTP pendente mais recente → verifica TTL → compara hash em tempo constante → retorna `valid: true/false`.
+3. **Listagem:** `GET /api/v1/otp` ou `/api/v1/otp/logs` com filtros por `external_id` e `status`.
 
-cd auth-svc
-cp .env.example .env          # ajusta valores reais
-uv sync
-make dev                      # sobe na porta 80
-```
+## Configuração
 
-O script `new_service.sh` troca `notifica` pelo nome novo
-em todos os arquivos relevantes (`pyproject.toml`, README, etc.).
+Toda configuração é feita via `.env`:
 
-### 2. Subir o Claude Code pra esse serviço
+| Variável         | Default        | Descrição                    |
+| ---------------- | -------------- | ---------------------------- |
+| `OTP_FOOTER`     | Equipe OTP     | Rodapé da mensagem           |
+| `OTP_TTL_S`      | 300            | Tempo de vida do código (s)  |
+| `OTP_NUM_DIGITS` | 6              | Quantidade de dígitos        |
+| `OTP_MAX_ATTEMPTS` | 3            | Tentativas máximas (futuro)  |
+| `OTP_ACTIVE`     | true           | Ativar/desativar serviço     |
 
-Dentro da pasta do serviço:
+## Integração
 
-```bash
-export ANTHROPIC_BASE_URL="http://proxy.local:8787"   # seu proxy DeepSeek
-export ANTHROPIC_AUTH_TOKEN="..."
-export CONTEXT7_API_KEY="..."
-
-claude                        # ou claude-code, dependendo da sua instalacao
-```
-
-O Claude Code vai automaticamente:
-- Ler `.claude/CLAUDE.md` (memória + regras)
-- Ler `.claude/memory/*.md` (contexto persistente)
-- Carregar Context7 via `.mcp.json` (docs reais das libs)
-- Usar DeepSeek v4 Pro como modelo (configurado em `.claude/settings.json`)
-
-> **Importante:** o Claude Code daquela pasta é **exclusivo daquele
-> serviço**. Cada serviço tem o próprio.
-
-### 3. O que o Claude Code já sabe fazer aqui
-
-Ele foi instruído a, sem você precisar repetir:
-- **Não alucinar** (consulta Context7 quando não sabe).
-- **Fazer apenas o que você pedir** (não cria features extras).
-- **Salvar tudo na memória** (`.claude/memory/`).
-- **Manter a estrutura de pastas** definida.
-- **Trabalhar em PT-BR** nos comentários e docs.
-- **Usar a porta 80**.
-- **Ignorar segurança por enquanto** (DMZ — vamos travar depois).
-
----
-
-## Estrutura
-
-```
-.
-├── .claude/                  # Claude Code: memoria + regras + modelo
-├── .mcp.json                 # Context7 MCP
-├── app/
-│   ├── main.py               # FastAPI entrypoint, porta 80
-│   ├── config.py             # pydantic-settings
-│   ├── db.py                 # Tortoise init/close
-│   ├── api/                  # routers HTTP (1 arquivo por feature)
-│   ├── models/               # modelos Tortoise
-│   ├── schemas/              # Pydantic request/response
-│   ├── services/             # regras de negocio
-│   ├── integrations/         # httpx, redis, rabbitmq, webhooks
-│   ├── workers/              # consumers de fila
-│   └── utils/                # logging etc
-├── tests/
-├── scripts/
-├── pyproject.toml
-├── Makefile
-└── .env.example
-```
-
-Detalhes de **onde colocar cada coisa nova** estão em
-`.claude/memory/conventions.md`.
-
----
-
-## Contexto operacional (Proxmox / DMZ)
-
-- Roda em LXC ou VM no Proxmox.
-- Está em **zona desmilitarizada** — sem firewall entre serviços internos.
-- Ambiente é **dev**, mas **infra é real**: portas, hosts, banco.
-- **Segurança não é prioridade agora** (auth, CORS, rate-limit). Quando for,
-  vamos abrir um issue específico.
+Envia mensagens via **notify** (`10.10.10.157/api/v1`). O contacto deve existir previamente no notify.
 
 ## Comandos
 
@@ -113,28 +51,4 @@ make migrate     # aerich migrate && upgrade
 
 ## Banco
 
-Default: **SQLite** em `./data/app.db` (zero infra, perfeito pra subir o
-serviço sem dependência externa).
-
-Pra trocar pra Postgres dedicado deste serviço, basta mudar `DATABASE_URL`
-no `.env`:
-
-```env
-DATABASE_URL=postgres://user:pass@db.proxmox.local:5432/auth_svc
-```
-
-> **Lembrete arquitetural:** este banco é **só desse serviço**. Outro serviço
-> que precise desses dados consulta pela API.
-
-## Integrações prontas
-
-| Módulo                          | Pra quê                                |
-| ------------------------------- | -------------------------------------- |
-| `app/integrations/http_client.py` | Falar com outros microservices via HTTP |
-| `app/integrations/redis_client.py` | Cache + pub/sub leve                   |
-| `app/integrations/messaging.py`  | RabbitMQ (eventos entre serviços)      |
-| `app/integrations/webhooks.py`   | Receber e enviar webhooks              |
-| `app/workers/`                   | Consumers de fila / jobs em background |
-
-Cada uma tem um exemplo funcional. Quando você (ou o Claude Code) adicionar
-uma chamada nova pra outro serviço, **registre em `.claude/memory/integrations.md`**.
+SQLite em `./data/app.db`. Para trocar pra Postgres, mude `DATABASE_URL` no `.env`.

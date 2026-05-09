@@ -7,3 +7,4 @@ Olá! Seu código de acesso é:
 Válido por *5 minutos*. Não compartilhe com ninguém.
 
 {{rodape}}
+F
