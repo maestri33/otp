@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
+from app.api.status import router as status_router
 from app.config import get_settings
 from app.db import close_db, init_db
 from app.exceptions import DomainError
@@ -73,4 +74,5 @@ async def _handle_domain_error(request: Request, exc: DomainError) -> JSONRespon
     )
 
 
+app.include_router(status_router)
 app.include_router(api_router)
