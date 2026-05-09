@@ -1,12 +1,12 @@
 """
-Cliente HTTP para falar com outros microservices.
+Async HTTP client for communicating with other microservices.
 
 - Async (httpx).
-- Retry simples com backoff exponencial pra erros transitorios.
-- Timeout default sensato.
-- Para CADA servico externo, crie um wrapper em
-  `app/integrations/<servico>_client.py` que usa este client e expoe
-  funcoes de alto nivel — NAO espalhe httpx.get(...) pelo codigo.
+- Simple retry with exponential backoff for transient errors.
+- Sensible default timeout.
+- For EACH external service, create a wrapper in
+  `app/integrations/<service>_client.py` that uses this client and exposes
+  high-level functions — do NOT scatter httpx.get(...) throughout the code.
 """
 
 import asyncio
@@ -24,7 +24,7 @@ RETRYABLE_STATUS = {429, 502, 503, 504}
 
 
 async def get_http_client() -> AsyncIterator[httpx.AsyncClient]:
-    """Yielda um AsyncClient — use como Depends() no FastAPI."""
+    """Yield an AsyncClient — use as FastAPI Depends()."""
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         yield client
 
@@ -38,7 +38,7 @@ async def request_with_retry(
     backoff_base: float = 0.5,
     **kwargs: Any,
 ) -> httpx.Response:
-    """Faz a request com retry exponencial em erros transitorios."""
+    """Make a request with exponential retry on transient errors."""
     last_exc: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:
@@ -58,7 +58,6 @@ async def request_with_retry(
             last_exc = exc
             log.warning("http.transport_error", url=url, attempt=attempt, error=str(exc))
             if attempt == max_attempts:
-                raise IntegrationError(f"Falha ao chamar {url}: {exc}") from exc
+                raise IntegrationError(f"Failed to call {url}: {exc}") from exc
             await asyncio.sleep(backoff_base * 2 ** (attempt - 1))
-    # nao deve cair aqui, mas pro mypy:
-    raise IntegrationError(f"Falha ao chamar {url}: {last_exc}")
+    raise IntegrationError(f"Failed to call {url}: {last_exc}")

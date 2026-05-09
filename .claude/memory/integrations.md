@@ -20,5 +20,18 @@
 
 ## Integrações ativas
 
-_Nenhuma ainda. Adicione aqui assim que criar o primeiro
-`app/integrations/<servico>_client.py`._
+### notify (10.10.10.157 via notify.local)
+- **Tipo:** HTTP
+- **Base URL:** http://notify.local/api/v1 (resolve pra 10.10.10.157)
+- **Endpoints usados:**
+  - GET /health, GET /ready
+  - POST /contacts, GET /contacts, GET /contacts/check, GET /contacts/{external_id}
+  - POST /messages/send, GET /messages, GET /messages/{message_id}
+  - GET /templates/email, PUT /templates/email
+  - GET /logs
+- **Auth:** nenhuma (DMZ)
+- **Retry:** 3x backoff exponencial (via http_client)
+- **Última verificação:** 2026-05-09
+- **Notas:** Servico externo de notificacoes (WhatsApp, email, TTS). Client em
+  `app/integrations/notify_client.py`, camada de servico em `app/services/notify.py`.
+  Endpoints usam prefixo `/api/v1` no router principal do notify.

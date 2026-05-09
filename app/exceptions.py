@@ -1,13 +1,13 @@
 """
-Excecoes de dominio.
+Domain exceptions.
 
-Levante estas excecoes na camada `services/`. O handler global em `main.py`
-converte em HTTPException — services NAO devem importar HTTPException.
+Raise these in the `services/` layer. The global handler in `main.py`
+converts them to HTTP responses — services must NOT import HTTPException.
 """
 
 
 class DomainError(Exception):
-    """Base de todas as excecoes de dominio deste servico."""
+    """Base class for all domain exceptions in this service."""
 
     status_code: int = 400
     code: str = "domain_error"
@@ -33,7 +33,7 @@ class ValidationError(DomainError):
 
 
 class IntegrationError(DomainError):
-    """Falha ao chamar um servico externo (HTTP, fila, webhook)."""
+    """Failure calling an external service (HTTP, queue, webhook)."""
 
     status_code = 502
     code = "integration_error"

@@ -1,5 +1,5 @@
 [project]
-name = "microservice-template"
+name = "otp"
 version = "0.1.0"
 description = "Template generico de microserviço FastAPI + Tortoise ORM (clone-and-rename)"
 requires-python = ">=3.12"
@@ -13,11 +13,8 @@ dependencies = [
     "pydantic>=2.8",
     "pydantic-settings>=2.5",
     "httpx>=0.27",
-    "redis>=5.0",
-    "aio-pika>=9.4",
     "structlog>=24.4",
     "python-dotenv>=1.0",
-    "asyncpg>=0.29",
 ]
 
 [dependency-groups]
@@ -36,6 +33,9 @@ src_folder = "./."
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests that depend on external services (notify)",
+]
 
 [tool.ruff]
 line-length = 100

@@ -1,4 +1,4 @@
-# microservice-template
+# otp
 
 Template **bootstrap** de microserviço para o ecossistema interno (Proxmox / DMZ).
 Stack: **FastAPI + Tortoise ORM + Uvicorn + uv**, com **Claude Code já configurado**
@@ -25,7 +25,7 @@ uv sync
 make dev                      # sobe na porta 80
 ```
 
-O script `new_service.sh` troca `microservice-template` pelo nome novo
+O script `new_service.sh` troca `notifica` pelo nome novo
 em todos os arquivos relevantes (`pyproject.toml`, README, etc.).
 
 ### 2. Subir o Claude Code pra esse serviço

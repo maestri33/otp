@@ -1,8 +1,8 @@
 """
-Configuracao do servico — leitura do .env via pydantic-settings.
+Application config — reads .env via pydantic-settings.
 
-Tudo que vier de fora (URL de banco, broker, redis, secrets) passa por aqui.
-Nao leia env var direto fora deste modulo.
+All external configuration (DB URL, broker, Redis, secrets) flows through here.
+Never read env vars directly outside this module.
 """
 
 from functools import lru_cache
@@ -19,20 +19,23 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Identificacao do servico
-    service_name: str = "microservice-template"
+    # Service identity
+    service_name: str = "otp"
     env: Literal["dev", "staging", "prod"] = "dev"
     log_level: str = "INFO"
     port: int = 80
 
-    # Banco — cada servico tem o seu proprio
+    # Database — each service owns its own
     database_url: str = "sqlite://data/app.db"
 
-    # Redis (cache + pub/sub leve)
+    # Redis (cache + lightweight pub/sub)
     redis_url: str = "redis://localhost:6379/0"
 
-    # RabbitMQ / AMQP (fila de mensagens)
+    # RabbitMQ / AMQP (message broker)
     broker_url: str = "amqp://guest:guest@localhost:5672/"
+
+    # External notify service
+    notify_base_url: str = "http://10.10.10.144"
 
     # Webhooks
     webhook_outbound_timeout_s: int = 10
@@ -40,5 +43,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Settings singleton — uma instancia por processo."""
+    """Settings singleton — one instance per process."""
     return Settings()

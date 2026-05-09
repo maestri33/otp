@@ -1,7 +1,7 @@
 """
-Entrypoint FastAPI.
+FastAPI entrypoint.
 
-Roda em: uvicorn app.main:app --host 0.0.0.0 --port 80
+Run with: uvicorn app.main:app --host 0.0.0.0 --port 80
 """
 
 from contextlib import asynccontextmanager
@@ -18,7 +18,7 @@ from app.exceptions import DomainError
 from app.utils.logging import configure_logging, get_logger
 
 settings = get_settings()
-configure_logging(settings.log_level)
+configure_logging(settings.log_level, settings.env)
 log = get_logger(__name__)
 
 
@@ -37,9 +37,24 @@ app = FastAPI(
     title=settings.service_name,
     version="0.1.0",
     lifespan=lifespan,
+    description="""
+Microsserviço **OTP** — geração e validação de códigos de autenticação descartáveis.
+
+## Funcionalidades
+
+- Gera código OTP numérico e envia via serviço externo **notify**.
+- Valida código OTP contra hash SHA256 com TTL configurável.
+- Configuração dinâmica (TTL, dígitos, rodapé, ativar/desativar).
+- Logs completos de todas as operações.
+
+## Integração
+
+Envia mensagens para o serviço **notify** (`10.10.10.157/api/v1`).
+O contacto deve existir previamente no notify.
+""",
 )
 
-# DMZ: CORS aberto por enquanto. Apertar quando o usuario pedir "trava isso".
+# DMZ: CORS wide open for now. Lock down when the user requests "trava isso".
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,7 +66,7 @@ app.add_middleware(
 
 @app.exception_handler(DomainError)
 async def _handle_domain_error(request: Request, exc: DomainError) -> JSONResponse:
-    """Converte excecoes de dominio em respostas HTTP padronizadas."""
+    """Convert domain exceptions to standardized HTTP responses."""
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message},

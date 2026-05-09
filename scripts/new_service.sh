@@ -39,7 +39,7 @@ rsync -a \
   --exclude '.claude/projects' \
   "$src/" "$dst/"
 
-echo "==> Substituindo nome 'microservice-template' -> '$name'"
+echo "==> Substituindo nome 'notifica' -> '$name'"
 # tenta gsed (mac) primeiro, depois sed -i
 SED_INPLACE=(sed -i)
 if command -v gsed >/dev/null 2>&1; then
@@ -50,12 +50,12 @@ else
   SED_INPLACE=(sed -i '')
 fi
 
-grep -rl "microservice-template" "$dst" \
+grep -rl "notifica" "$dst" \
   --exclude-dir=.git \
   --exclude-dir=.venv \
   --exclude-dir=__pycache__ \
   | while read -r f; do
-    "${SED_INPLACE[@]}" "s/microservice-template/$name/g" "$f"
+    "${SED_INPLACE[@]}" "s/notifica/$name/g" "$f"
   done
 
 echo "==> Pronto."

@@ -1,10 +1,10 @@
 """
-Configuracao do Tortoise ORM.
+Tortoise ORM configuration.
 
-- TORTOISE_ORM e' o dict de configuracao usado tanto pelo lifespan do app
-  quanto pelo Aerich (migrations). NAO renomeie.
-- A descoberta de modelos e' por convencao: tudo em `app.models` + tabelas
-  internas do Aerich.
+- TORTOISE_ORM is the config dict used by both the app lifespan
+  and Aerich (migrations). Do NOT rename it.
+- Model discovery is by convention: everything under `app.models`
+  plus Aerich internal tables.
 """
 
 from pathlib import Path
@@ -18,21 +18,22 @@ settings = get_settings()
 
 def _ensure_sqlite_dir(url: str) -> None:
     """
-    Cria a pasta do arquivo SQLite se nao existir.
+    Create the SQLite file directory if it doesn't exist.
 
-    Tortoise aceita:
-    - `sqlite://data/app.db`           (path relativo, 2 barras)
-    - `sqlite:///abs/path/app.db`      (path absoluto, 3 barras)
-    - `sqlite://:memory:`              (em memoria)
+    Tortoise accepts:
+    - `sqlite://data/app.db`           (relative path, 2 slashes)
+    - `sqlite:///abs/path/app.db`      (absolute path, 3 slashes)
+    - `sqlite://:memory:`              (in-memory)
     """
     if not url.startswith("sqlite"):
         return
     after = url.split("://", 1)[1]
     if after in (":memory:", "") or after.startswith(":memory:"):
         return
-    # 3 barras viram path absoluto: sqlite:///x -> /x
+    # 3 slashes become absolute path: sqlite:///x -> /x
     path_part = "/" + after.lstrip("/") if url.startswith("sqlite:///") else after
     Path(path_part).parent.mkdir(parents=True, exist_ok=True)
+
 
 TORTOISE_ORM = {
     "connections": {"default": settings.database_url},
@@ -48,14 +49,14 @@ TORTOISE_ORM = {
 
 
 async def init_db() -> None:
-    """Inicializa conexoes e (em dev/sqlite) cria as tabelas se nao existirem."""
+    """Initialize connections and (in dev/sqlite) create tables if missing."""
     _ensure_sqlite_dir(settings.database_url)
     await Tortoise.init(config=TORTOISE_ORM)
     if settings.env == "dev" and settings.database_url.startswith("sqlite"):
-        # em dev com sqlite e' conveniente auto-criar; em prod use aerich.
+        # In dev with sqlite it's convenient to auto-create; in prod use aerich.
         await Tortoise.generate_schemas(safe=True)
 
 
 async def close_db() -> None:
-    """Fecha as conexoes — chamado no shutdown do FastAPI."""
+    """Close connections — called on FastAPI shutdown."""
     await Tortoise.close_connections()
